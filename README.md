@@ -14,7 +14,7 @@ A simple, ~60-line Python utility script designed to automate the cleanup of you
 * **`C:\ProgramData\NVIDIA Corporation\Downloader`**: Old NVIDIA driver installers
 
 ### User Folders
-*(Specific to the current logged-in user, e.g., `C:\Users\Hugh\...`)*
+*(Specific to the current logged-in user, e.g., `C:\Users\MrYayyeT\...`)*
 * **`...\AppData\Local\Temp`**: Your local temporary application files
 * **`...\AppData\Local\Microsoft\Windows\INetCache`**: Windows internet cache
 * **`...\AppData\Local\D3DSCache`**: Direct3D Shader cache for gaming and graphics
