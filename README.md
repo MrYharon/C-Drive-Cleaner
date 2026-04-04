@@ -22,3 +22,5 @@ A simple, ~60-line Python utility script designed to automate the cleanup of you
 ### Special Operations
 * **The Recycle Bin**: Emptied completely via the native Windows API.
 * **Screenshots**: Deletes files located in your `Pictures\Screenshots` folder.
+
+*Just Run the Python Script to clean your PC*
