@@ -42,6 +42,9 @@ class CleanupApp:
         self.btn_dev = tk.Button(btn_frame, text="Clear Dev Caches", width=15, command=self.start_dev_cleanup)
         self.btn_dev.pack(side=tk.LEFT, padx=5)
 
+        self.btn_browser = tk.Button(btn_frame, text="Browser Caches", width=15, command=self.start_browser_cleanup)
+        self.btn_browser.pack(side=tk.LEFT, padx=5)
+
         self.btn_clear_log = tk.Button(btn_frame, text="Clear Log", width=15, command=self.clear_console)
         self.btn_clear_log.pack(side=tk.RIGHT, padx=5)
 
@@ -76,8 +79,8 @@ class CleanupApp:
                 elif item.is_dir():
                     shutil.rmtree(item)
                 self.log(f"    [+] Deleted: {item.name}")
-            except Exception:
-                pass 
+            except Exception as e:
+                self.log(f"    [!] Failed: {item.name} - {e}")
 
     def empty_recycle_bin(self):
         self.log("[*] Emptying Recycle Bin...")
@@ -86,29 +89,30 @@ class CleanupApp:
             if result == 0:
                 self.log("    [+] Recycle Bin cleared.")
             else:
-                self.log("    [-] Recycle Bin already empty.")
+                self.log(f"    [!] Failed to empty Recycle Bin (code: {result}).")
         except Exception as e:
             self.log(f"    [!] Recycle Bin Error: {e}")
 
     
     
     def basic_cleanup_worker(self):
-        self.btn_basic.config(state=tk.DISABLED)
+        self.root.after(0, lambda: self.btn_basic.config(state=tk.DISABLED))
         self.log("\n=== STARTING BASIC CLEANUP ===")
         targets = [
             r"%WINDIR%\Temp",
             r"%LOCALAPPDATA%\Temp",
             r"%WINDIR%\Prefetch",
-            r"%LOCALAPPDATA%\Microsoft\Windows\INetCache"
+            r"%LOCALAPPDATA%\Microsoft\Windows\INetCache",
+            r"%USERPROFILE%\Pictures\Screenshots"
         ]
         for t in targets:
             self.clean_directory(t)
         self.empty_recycle_bin()
         self.log("=== BASIC CLEANUP COMPLETE ===\n")
-        self.btn_basic.config(state=tk.NORMAL)
+        self.root.after(0, lambda: self.btn_basic.config(state=tk.NORMAL))
 
     def deep_cleanup_worker(self):
-        self.btn_deep.config(state=tk.DISABLED)
+        self.root.after(0, lambda: self.btn_deep.config(state=tk.DISABLED))
         self.log("\n=== STARTING DEEP SYSTEM CLEANUP ===")
         
         # Stop Windows Update, clean, restart
@@ -119,20 +123,64 @@ class CleanupApp:
         
      
         self.log("[*] Triggering Windows Native Deep Clean (Runs in background)...")
+        self.log("    [i] Requires prior setup: run 'cleanmgr /sageset:65535' once to configure settings.")
         try:
             subprocess.Popen("cleanmgr /sagerun:65535", shell=True)
-            self.log("    [+] Native Disk Cleanup triggered successfully.")
+            self.log("    [+] Native Disk Cleanup triggered.")
         except Exception as e:
             self.log(f"    [!] Error triggering cleanmgr: {e}")
 
-        self.log("=== DEEP CLEANUP COMMANDS SENT ===\n")
-        self.btn_deep.config(state=tk.NORMAL)
+        self.log("[*] Cleaning CBS logs...")
+        self.clean_directory(r"%WINDIR%\Logs\CBS")
+
+        self.log("[*] Cleaning Delivery Optimization cache...")
+        self.clean_directory(r"%PROGRAMDATA%\Microsoft\Windows\DeliveryOptimization\Cache")
+
+        self.log("[*] Cleaning Windows Error Reporting dumps...")
+        self.clean_directory(r"%PROGRAMDATA%\Microsoft\Windows\WER")
+
+        self.log("[*] Cleaning Thumbnail Cache...")
+        thumb_dir = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Windows\Explorer"))
+        if thumb_dir.exists():
+            for f in thumb_dir.glob("thumbcache_*.db"):
+                try:
+                    f.unlink()
+                    self.log(f"    [+] Deleted: {f.name}")
+                except Exception as e:
+                    self.log(f"    [!] Failed: {f.name} - {e}")
+
+        self.log("[*] Removing Windows.old...")
+        self.log("    [i] This deletes the previous Windows installation (no rollback possible).")
+        old_windows = Path("C:/Windows.old")
+        if old_windows.exists():
+            try:
+                subprocess.run('takeown /f "C:\\Windows.old" /r /d y 2>nul', capture_output=True, shell=True, timeout=120)
+                subprocess.run('icacls "C:\\Windows.old" /grant Administrators:F /T /Q 2>nul', capture_output=True, shell=True, timeout=120)
+                subprocess.run('rd /s /q "C:\\Windows.old"', capture_output=True, shell=True, timeout=120)
+                self.log("    [+] Windows.old removed.")
+            except Exception as e:
+                self.log(f"    [!] Failed to remove Windows.old: {e}")
+        else:
+            self.log("    [-] Windows.old not found.")
+
+        self.log("[*] Running DISM WinSxS component cleanup (may take several minutes)...")
+        try:
+            subprocess.run("Dism /online /Cleanup-Image /StartComponentCleanup /ResetBase", capture_output=True, shell=True, timeout=600)
+            self.log("    [+] WinSxS component cleanup completed.")
+        except subprocess.TimeoutExpired:
+            self.log("    [!] DISM timed out (still running in background).")
+        except Exception as e:
+            self.log(f"    [!] DISM cleanup failed: {e}")
+
+        self.log("=== DEEP CLEANUP COMPLETE ===\n")
+        self.root.after(0, lambda: self.btn_deep.config(state=tk.NORMAL))
 
     def dev_cleanup_worker(self):
-        self.btn_dev.config(state=tk.DISABLED)
+        self.root.after(0, lambda: self.btn_dev.config(state=tk.DISABLED))
         self.log("\n=== STARTING DEV CACHE CLEANUP ===")
         
         
+        self.log("    [i] Cleaning NuGet packages cache will require restoring all project packages.")
         self.clean_directory(r"%USERPROFILE%\.nuget\packages")
         
         
@@ -151,9 +199,40 @@ class CleanupApp:
                 self.log(f"    [!] Failed to clear {name}: {e}")
 
         self.log("=== DEV CACHE CLEANUP COMPLETE ===\n")
-        self.btn_dev.config(state=tk.NORMAL)
+        self.root.after(0, lambda: self.btn_dev.config(state=tk.NORMAL))
 
-    
+    def browser_cleanup_worker(self):
+        self.root.after(0, lambda: self.btn_browser.config(state=tk.DISABLED))
+        self.log("\n=== STARTING BROWSER CACHE CLEANUP ===")
+        self.log("    [!] This will log you out of websites in Chrome, Edge, and Firefox.")
+
+        browsers = [
+            (r"%LOCALAPPDATA%\Google\Chrome\User Data\Default\Cache", "Chrome"),
+            (r"%LOCALAPPDATA%\Microsoft\Edge\User Data\Default\Cache", "Edge"),
+        ]
+        for path, name in browsers:
+            p = Path(os.path.expandvars(path))
+            if p.exists():
+                self.log(f"[*] Cleaning {name} cache...")
+                self.clean_directory(str(p))
+            else:
+                self.log(f"    [-] {name} cache not found.")
+
+        ff_profiles = Path(os.path.expandvars(r"%APPDATA%\Mozilla\Firefox\Profiles"))
+        if ff_profiles.exists():
+            for profile in ff_profiles.iterdir():
+                cache2 = profile / "cache2"
+                if cache2.exists():
+                    self.log("[*] Cleaning Firefox cache...")
+                    self.clean_directory(str(cache2))
+                    break
+            else:
+                self.log("    [-] Firefox cache not found.")
+        else:
+            self.log("    [-] Firefox cache not found.")
+
+        self.log("=== BROWSER CACHE CLEANUP COMPLETE ===\n")
+        self.root.after(0, lambda: self.btn_browser.config(state=tk.NORMAL))
 
     def start_basic_cleanup(self):
         threading.Thread(target=self.basic_cleanup_worker, daemon=True).start()
@@ -163,6 +242,9 @@ class CleanupApp:
 
     def start_dev_cleanup(self):
         threading.Thread(target=self.dev_cleanup_worker, daemon=True).start()
+
+    def start_browser_cleanup(self):
+        threading.Thread(target=self.browser_cleanup_worker, daemon=True).start()
 
 if __name__ == "__main__":
     
